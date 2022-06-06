@@ -1,0 +1,48 @@
+
+-- Creating a table with selected columns
+
+CREATE TABLE friends(
+id INTEGER PRIMARY KEY,
+name TEXT UNIQUE,
+birthday TEXT NOT NULL,
+);
+
+-- Adding a new row
+
+INSERT INTO friends (id, name, birthday)
+VALUES (1, 'Ororo Munroe','1940-05-30');
+
+-- Adding two new rows
+
+INSERT INTO friends (id, name, birthday)
+VALUES (2, 'Mike Jagger','1950-05-30');
+
+INSERT INTO friends (id, name, birthday)
+VALUES (3, 'Liz Taylor','1960-05-30');
+
+-- Updating records
+
+UPDATE friends
+SET name = 'Storm Munroe'
+WHERE id 1;
+
+-- Adding a new column
+
+ALTER TABLE friends
+ADD COLUMN email TEXT;
+
+-- Updating email adress for each record
+
+UPDATE friends
+SET email = 'storm@codeacademy.com'
+WHERE id IS NOT NULL;
+
+-- Removal of a record
+
+DELETE FROM friends
+WHERE id = 1;
+
+-- Printing final version of the table
+
+SELECT *
+FROM friends;
