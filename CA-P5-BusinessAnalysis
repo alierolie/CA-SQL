@@ -1,0 +1,167 @@
+
+-- Curation of SQLite codes for common business problems
+
+-- Usage Funnels
+
+ SELECT ROUND(
+   100.0 * COUNT(DISTINCT c.user_id) /
+   COUNT(DISTINCT b.user_id)
+ ) AS browse_to_checkout_percent,
+ ROUND(
+   100.0 * COUNT(DISTINCT p.user_id) /
+   COUNT(DISTINCT c.user_id)
+ ) AS checkout_to_purchase_percent
+ FROM browse b
+ LEFT JOIN checkout c
+  ON b.user_id = c.user_id
+ LEFT JOIN purchase p
+  ON c.user_id = p.user_id;
+
+-- User Churn
+-- A company has 1000 customers, in February, 200 learners signed up and 250 canceled.
+
+SELECT COUNT(DISTINCT user_id) AS enrollments,
+  COUNT(CASE
+        WHEN strftime("%m", cancel_date) = '03'
+        THEN user_id
+        END) AS march_cancellations,
+  ROUND(100.0 * COUNT(CASE
+                      WHEN strftime("%m", cancel_date) = '03'
+                      THEN user_id
+                      END) / COUNT(DISTINCT user_id)) AS churn_rate
+FROM pro_users
+WHERE signup_date < '2017-04-01'
+  AND (
+    (cancel_date IS NULL) OR
+    (cancel_date > '2017-03-01')
+  );
+
+-- A/B Test
+
+SELECT DISTINCT q.user_id,
+   h.user_id IS NOT NULL AS 'is_home_try_on',
+   h.number_of_pairs,
+   p.user_id IS NOT NULL AS 'is_purchase'
+FROM quiz q
+LEFT JOIN home_try_on h
+   ON q.user_id = h.user_id
+LEFT JOIN purchase p
+   ON p.user_id = q.user_id
+LIMIT 10;
+--6-funnel rate with number of pairs
+SELECT ROUND(100.0*COUNT(h.user_id) /
+            COUNT(q.user_id),2)
+            AS quiz_to_home_percent,
+      ROUND(100.0*COUNT(p.user_id) /
+            COUNT(h.user_id),2)
+            AS home_to_purchase_percent,
+      (CASE
+      WHEN h.number_of_pairs = '3 pairs' THEN 'Three'
+      WHEN h.number_of_pairs = '5 pairs' THEN 'Five'
+      ELSE 'Not Sent'
+      END) AS shoe_pairs
+FROM quiz q
+  LEFT JOIN home_try_on h
+    ON q.user_id=h.user_id
+  LEFT JOIN purchase p
+    ON h.user_id = p.user_id
+GROUP BY 3
+  LIMIT 10;
+  
+-- Number of three and five shoes sent
+SELECT h.number_of_pairs,
+        COUNT(h.number_of_pairs),
+        COUNT(p.user_id),
+        ROUND(100.0*COUNT(p.user_id) /
+              COUNT(h.number_of_pairs),2)
+FROM home_try_on h
+  LEFT JOIN purchase p
+    ON h.user_id = p.user_id
+GROUP BY 1;
+
+-- Most common style, model, color
+
+SELECT style, COUNT(style) AS 'Amount'
+FROM quiz
+GROUP BY 1
+ORDER BY 2 DESC
+LIMIT 3;
+
+SELECT model_name, COUNT(model_name) AS 'Number of Products'
+FROM purchase
+GROUP BY 1
+ORDER BY 2 DESC
+LIMIT 3;
+
+SELECT color, COUNT(color) AS 'Number of Products'
+FROM purchase
+GROUP BY 1
+ORDER BY 2 DESC
+LIMIT 3;
+
+-- Identifying active, canceled months and churn rate
+
+ WITH months AS(
+   SELECT
+    '2017-01-01' AS first_day,
+    '2017-01-31' AS last_day
+  UNION
+     SELECT
+    '2017-02-01' AS first_day,
+    '2017-02-28' AS last_day
+  UNION
+     SELECT
+    '2017-03-01' AS first_day,
+    '2017-03-31' AS last_day
+ ),
+cross_join AS(
+SELECT * FROM subscriptions
+ CROSS JOIN months
+),
+status AS(
+  SELECT id,
+      first_day AS month,
+      CASE
+        WHEN (subscription_start < first_day)
+          AND (subscription_end > first_day
+              OR subscription_end IS NULL)
+          AND (segment = 87) THEN 1
+          ELSE 0
+      END AS is_active_87,
+     CASE
+        WHEN (subscription_start < first_day)
+          AND (subscription_end > first_day
+              OR subscription_end IS NULL)
+          AND (segment = 30) THEN 1
+          ELSE 0
+      END AS is_active_30,
+      CASE
+        WHEN (subscription_end BETWEEN 
+        first_day AND last_day) AND (segment=87) 
+        THEN 1
+        ELSE 0
+      END AS is_canceled_87,
+      CASE
+        WHEN (subscription_end BETWEEN 
+        first_day AND last_day) AND (segment=30) 
+        THEN 1
+        ELSE 0
+      END AS is_canceled_30
+FROM cross_join
+),
+status_aggregate AS(
+
+SELECT month,
+        SUM(is_active_87) AS sum_active_87,
+        SUM(is_active_30) AS sum_active_30,
+        SUM(is_canceled_87) AS sum_canceled_87,
+        SUM(is_canceled_30) AS sum_canceled_30
+FROM status
+GROUP BY month -- assigned first day as month
+)
+
+SELECT 1.0*sum_canceled_87/sum_active_87
+          AS 'Churn Rate for Segment 87',
+        1.0*sum_canceled_30/sum_active_30
+          AS 'Churn Rate for Segment 30'
+FROM status_aggregate;
